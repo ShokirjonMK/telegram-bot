@@ -105,6 +105,16 @@ php yii queue/listen
 php yii queue/run
 ```
 
+### Lokal polling ishga tushirish (Development)
+
+```bash
+# Console command orqali
+php yii telegram-polling/polling --bot=student --timeout=30
+
+# Yoki standalone script
+php examples/polling.php --bot=student --timeout=30
+```
+
 ## 🚀 Ishlatish
 
 ### 1. Oddiy xabar yuborish (eski usul - backward compatible)
@@ -391,6 +401,87 @@ Webhook URL: `https://your.domain/telegram/webhook?bot=student` yoki `?bot=staff
 - **Queue support**: Background message sending
 - **Logging**: Barcha xatolar `telegram-error` kategoriyasi bilan loglanadi
 - **Backward compatibility**: Eski `Telegram` class hali ham ishlaydi
+- **Local polling support**: Python telegram bot kabi lokalda ishlash uchun polling
+
+## 🖥️ Lokalda ishlatish (Polling)
+
+Python telegram bot kabi lokalda ishlatish uchun polling ishlatishingiz mumkin. Ikki usul bor:
+
+### 1. Console Command (Tavsiya etiladi)
+
+`console/commands/TelegramPollingCommand.php` faylini yarating (misol: `examples/PollingCommand.php`):
+
+```php
+<?php
+namespace app\console\commands;
+
+use Yii;
+use yii\console\Controller;
+use shokirjonmk\telegram\CommandRouter;
+use shokirjonmk\telegram\UpdateHandlerMiddleware;
+use shokirjonmk\telegram\RateLimiter;
+use shokirjonmk\telegram\TelegramComponent;
+
+class TelegramPollingCommand extends Controller
+{
+    public $bot = 'student';
+    public $timeout = 30;
+
+    public function actionPolling()
+    {
+        $manager = Yii::$app->telegramManager;
+        $component = $manager->get($this->bot);
+
+        $router = new CommandRouter();
+        // Register your commands here
+        $router->register('/start', function($msg, $tg) {
+            $tg->sendMessage($msg['chat']['id'], "Welcome!");
+        });
+
+        $rateLimiter = new RateLimiter(6, 1);
+        $handler = new UpdateHandlerMiddleware($router, $rateLimiter);
+
+        $offset = 0;
+        while (true) {
+            $updates = $component->getUpdates($offset, 100, $this->timeout, null);
+            if (!empty($updates['ok']) && !empty($updates['result'])) {
+                foreach ($updates['result'] as $update) {
+                    $offset = $update['update_id'] + 1;
+                    $handler->handle($update, $component);
+                }
+            }
+        }
+    }
+}
+```
+
+Ishga tushirish:
+
+```bash
+php yii telegram-polling/polling --bot=student --timeout=30
+```
+
+### 2. Standalone Script
+
+`examples/polling.php` faylini ishlatishingiz mumkin:
+
+```bash
+php examples/polling.php --bot=student --timeout=30
+```
+
+### Polling vs Webhook
+
+| Xususiyat | Polling (Lokal) | Webhook (Production) |
+|-----------|----------------|---------------------|
+| **Ishlash joyi** | Lokal kompyuter | Server |
+| **Webhook kerakmi** | ❌ Yo'q | ✅ Ha |
+| **Natijaviylik** | Pastroq | Yuqori |
+| **Development** | ✅ Qulay | ❌ Qiyin |
+| **Production** | ❌ Tavsiya etilmaydi | ✅ Tavsiya etiladi |
+
+**Tavsiya**: 
+- **Development** uchun: Polling ishlating (lokalda)
+- **Production** uchun: Webhook ishlating (serverda)
 
 ## 📝 License
 
