@@ -16,10 +16,22 @@ class SendMessageJob extends BaseObject implements JobInterface
     public function execute($queue)
     {
         try {
+            if (empty($this->payload['botToken'])) {
+                throw new TelegramException('Bot token is required');
+            }
+            if (empty($this->payload['chatId'])) {
+                throw new TelegramException('Chat ID is required');
+            }
+            if (empty($this->payload['text'])) {
+                throw new TelegramException('Message text is required');
+            }
+
             // we create a TelegramComponent for the given token (ad-hoc)
             $component = new TelegramComponent([
                 'token' => $this->payload['botToken'],
+                'enableLogs' => true,
             ]);
+
             $component->sendMessage(
                 $this->payload['chatId'],
                 $this->payload['text'],
@@ -29,9 +41,10 @@ class SendMessageJob extends BaseObject implements JobInterface
             Yii::error([
                 'job' => 'SendMessageJob',
                 'err' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'payload' => $this->payload
             ], 'telegram-error');
-            // don't throw — job failed; Yii Queue will manage retries if configured
+            // Re-throw to let queue handle retries
             throw $e;
         }
     }

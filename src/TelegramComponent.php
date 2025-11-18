@@ -41,8 +41,14 @@ class TelegramComponent
      */
     protected function sendRequest($method, $params = [], $attempts = 3)
     {
+        if (empty($this->token)) {
+            throw new TelegramException('Bot token is not set');
+        }
+
         $url = $this->buildUrl($method);
         $attempt = 0;
+        $lastException = null;
+
         while ($attempt < $attempts) {
             try {
                 $attempt++;
@@ -54,18 +60,28 @@ class TelegramComponent
                     ->send();
 
                 if ($response->isOk) {
-                    return $response->data;
+                    $data = $response->data;
+                    // Check Telegram API response
+                    if (isset($data['ok']) && !$data['ok']) {
+                        $error = $data['description'] ?? 'Unknown Telegram API error';
+                        throw new TelegramException('Telegram API error: ' . $error);
+                    }
+                    return $data;
                 }
 
                 throw new \Exception('HTTP error: ' . $response->content);
-
+            } catch (TelegramException $e) {
+                // Don't retry Telegram API errors (like invalid token, etc.)
+                throw $e;
             } catch (\Throwable $e) {
+                $lastException = $e;
                 if ($this->enableLogs) {
                     Yii::error([
                         'method' => $method,
                         'params' => $params,
                         'err' => $e->getMessage(),
-                        'attempt' => $attempt
+                        'attempt' => $attempt,
+                        'trace' => $e->getTraceAsString()
                     ], 'telegram-error');
                 }
 
@@ -73,13 +89,11 @@ class TelegramComponent
                 if ($attempt < $attempts) {
                     sleep(pow(2, $attempt - 1));
                 }
-                if ($attempt >= $attempts) {
-                    throw new TelegramException($e->getMessage());
-                }
-                // retry loop continues
             }
         }
-        throw new TelegramException('Failed to send request');
+
+        // All attempts failed
+        throw new TelegramException('Failed to send request after ' . $attempts . ' attempts: ' . ($lastException ? $lastException->getMessage() : 'Unknown error'));
     }
 
     /**
@@ -92,18 +106,36 @@ class TelegramComponent
             return true; // Skip rate limiting if Redis not available
         }
 
-        // default global key per bot
-        $key = $key ?: 'tg_rate_bot_' . md5($this->token);
-        $redis = Yii::$app->redis;
-        // Use INCR + EXPIRE
-        $count = $redis->incr($key);
-        if ($count == 1) {
-            $redis->expire($key, 1);
+        try {
+            // default global key per bot
+            $key = $key ?: 'tg_rate_bot_' . md5($this->token);
+            $redis = Yii::$app->redis;
+            // Use INCR + EXPIRE
+            $count = $redis->incr($key);
+            if ($count == 1) {
+                $redis->expire($key, 1);
+            }
+            if ($count > $this->rateLimitPerSecond) {
+                if ($this->enableLogs) {
+                    Yii::warning([
+                        'key' => $key,
+                        'count' => $count,
+                        'limit' => $this->rateLimitPerSecond
+                    ], 'telegram-rate-limit');
+                }
+                return false;
+            }
+            return true;
+        } catch (\Throwable $e) {
+            // If Redis fails, allow request but log error
+            if ($this->enableLogs) {
+                Yii::error([
+                    'error' => $e->getMessage(),
+                    'key' => $key
+                ], 'telegram-rate-limit-error');
+            }
+            return true; // Allow request if rate limiting fails
         }
-        if ($count > $this->rateLimitPerSecond) {
-            return false;
-        }
-        return true;
     }
 
     /** PUBLIC API METHODS **/
@@ -115,15 +147,36 @@ class TelegramComponent
             throw new TelegramException('Rate limit exceeded');
         }
 
-        $data = array_merge([
+        $data = [
             'chat_id' => $chatId,
             'text' => $text,
-            'parse_mode' => isset($options['parse_mode']) ? $options['parse_mode'] : 'MarkdownV2',
-            'disable_web_page_preview' => $options['disable_web_page_preview'] ?? true,
-        ], $options['extra'] ?? []);
+        ];
 
+        // Parse mode
+        if (isset($options['parse_mode'])) {
+            $data['parse_mode'] = $options['parse_mode'];
+        } else {
+            $data['parse_mode'] = 'MarkdownV2';
+        }
+
+        // Disable web page preview
+        if (isset($options['disable_web_page_preview'])) {
+            $data['disable_web_page_preview'] = $options['disable_web_page_preview'];
+        }
+
+        // Reply to message
+        if (isset($options['reply_to_message_id'])) {
+            $data['reply_to_message_id'] = $options['reply_to_message_id'];
+        }
+
+        // Keyboard
         if (isset($options['keyboard'])) {
             $data['reply_markup'] = json_encode($options['keyboard']);
+        }
+
+        // Extra options
+        if (isset($options['extra']) && is_array($options['extra'])) {
+            $data = array_merge($data, $options['extra']);
         }
 
         return $this->sendRequest('sendMessage', $data, $options['attempts'] ?? 3);
@@ -186,9 +239,146 @@ class TelegramComponent
         return $this->sendRequest('getFile', ['file_id' => $fileId]);
     }
 
-    public function setWebhook($url)
+    public function setWebhook($url, $options = [])
     {
-        return $this->sendRequest('setWebhook', ['url' => $url]);
+        $data = ['url' => $url];
+        if (isset($options['allowed_updates'])) {
+            $data['allowed_updates'] = $options['allowed_updates'];
+        }
+        if (isset($options['drop_pending_updates'])) {
+            $data['drop_pending_updates'] = $options['drop_pending_updates'];
+        }
+        return $this->sendRequest('setWebhook', $data);
+    }
+
+    public function deleteWebhook($dropPendingUpdates = false)
+    {
+        $data = [];
+        if ($dropPendingUpdates) {
+            $data['drop_pending_updates'] = true;
+        }
+        return $this->sendRequest('deleteWebhook', $data);
+    }
+
+    public function getWebhookInfo()
+    {
+        return $this->sendRequest('getWebhookInfo');
+    }
+
+    public function deleteMessage($chatId, $messageId)
+    {
+        return $this->sendRequest('deleteMessage', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+        ]);
+    }
+
+    public function forwardMessage($chatId, $fromChatId, $messageId, $options = [])
+    {
+        $data = [
+            'chat_id' => $chatId,
+            'from_chat_id' => $fromChatId,
+            'message_id' => $messageId,
+        ];
+        if (isset($options['disable_notification'])) {
+            $data['disable_notification'] = $options['disable_notification'];
+        }
+        return $this->sendRequest('forwardMessage', $data);
+    }
+
+    public function sendDocument($chatId, $document, $caption = null, $keyboard = null, $options = [])
+    {
+        $data = [
+            'chat_id' => $chatId,
+            'document' => $document,
+        ];
+        if ($caption !== null) {
+            $data['caption'] = $caption;
+            $data['parse_mode'] = $options['parse_mode'] ?? 'MarkdownV2';
+        }
+        if ($keyboard) {
+            $data['reply_markup'] = json_encode($keyboard);
+        }
+        if (isset($options['disable_notification'])) {
+            $data['disable_notification'] = $options['disable_notification'];
+        }
+        return $this->sendRequest('sendDocument', $data);
+    }
+
+    public function sendVideo($chatId, $video, $caption = null, $keyboard = null, $options = [])
+    {
+        $data = [
+            'chat_id' => $chatId,
+            'video' => $video,
+        ];
+        if ($caption !== null) {
+            $data['caption'] = $caption;
+            $data['parse_mode'] = $options['parse_mode'] ?? 'MarkdownV2';
+        }
+        if ($keyboard) {
+            $data['reply_markup'] = json_encode($keyboard);
+        }
+        if (isset($options['duration'])) {
+            $data['duration'] = $options['duration'];
+        }
+        if (isset($options['width'])) {
+            $data['width'] = $options['width'];
+        }
+        if (isset($options['height'])) {
+            $data['height'] = $options['height'];
+        }
+        return $this->sendRequest('sendVideo', $data);
+    }
+
+    public function sendLocation($chatId, $latitude, $longitude, $keyboard = null, $options = [])
+    {
+        $data = [
+            'chat_id' => $chatId,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+        ];
+        if ($keyboard) {
+            $data['reply_markup'] = json_encode($keyboard);
+        }
+        if (isset($options['live_period'])) {
+            $data['live_period'] = $options['live_period'];
+        }
+        return $this->sendRequest('sendLocation', $data);
+    }
+
+    public function editMessageReplyMarkup($chatId, $messageId, $keyboard = null)
+    {
+        $data = [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+        ];
+        if ($keyboard) {
+            $data['reply_markup'] = json_encode($keyboard);
+        }
+        return $this->sendRequest('editMessageReplyMarkup', $data);
+    }
+
+    public function getMe()
+    {
+        return $this->sendRequest('getMe');
+    }
+
+    public function getUpdates($offset = null, $limit = null, $timeout = null, $allowedUpdates = null)
+    {
+        $data = [];
+        if ($offset !== null) {
+            $data['offset'] = $offset;
+        }
+        if ($limit !== null) {
+            $data['limit'] = $limit;
+        }
+        if ($timeout !== null) {
+            $data['timeout'] = $timeout;
+        }
+        if ($allowedUpdates !== null) {
+            $data['allowed_updates'] = $allowedUpdates;
+        }
+        return $this->sendRequest('getUpdates', $data);
     }
 
     /**
@@ -226,4 +416,3 @@ class TelegramComponent
         return self::escapeMarkdownV2($text);
     }
 }
-

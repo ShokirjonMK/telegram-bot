@@ -23,15 +23,36 @@ class TelegramManager extends \yii\base\Component
         $name = $name ?: $this->defaultBot;
         if (!isset($this->_instances[$name])) {
             if (!isset($this->bots[$name])) {
-                throw new \InvalidArgumentException("Bot config '{$name}' not found");
+                throw new \InvalidArgumentException("Bot config '{$name}' not found. Available bots: " . implode(', ', array_keys($this->bots)));
             }
             $cfg = $this->bots[$name];
+            
+            if (empty($cfg['token'])) {
+                throw new \InvalidArgumentException("Bot token is required for bot '{$name}'");
+            }
+            
             $comp = new TelegramComponent($cfg + [
                 'enableLogs' => $this->enableLogs,
             ]);
             $this->_instances[$name] = $comp;
         }
         return $this->_instances[$name];
+    }
+
+    /**
+     * Get all registered bot names
+     */
+    public function getBotNames()
+    {
+        return array_keys($this->bots);
+    }
+
+    /**
+     * Check if bot exists
+     */
+    public function has($name)
+    {
+        return isset($this->bots[$name]);
     }
 }
 

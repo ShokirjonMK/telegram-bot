@@ -255,19 +255,43 @@ public function actionWebhook()
 
 ### TelegramComponent
 
+#### Xabar metodlari
 - `sendMessage($chatId, $text, $options = [])` - Xabar yuborish
-- `sendPhoto($chatId, $photo, $caption = null, $keyboard = null)` - Rasm yuborish
 - `editMessageText($chatId, $messageId, $text, $options = [])` - Xabarni o'zgartirish
+- `editMessageReplyMarkup($chatId, $messageId, $keyboard = null)` - Xabar keyboardini o'zgartirish
+- `deleteMessage($chatId, $messageId)` - Xabarni o'chirish
+- `forwardMessage($chatId, $fromChatId, $messageId, $options = [])` - Xabarni forward qilish
+
+#### Media metodlari
+- `sendPhoto($chatId, $photo, $caption = null, $keyboard = null)` - Rasm yuborish
+- `sendDocument($chatId, $document, $caption = null, $keyboard = null, $options = [])` - Hujjat yuborish
+- `sendVideo($chatId, $video, $caption = null, $keyboard = null, $options = [])` - Video yuborish
+- `sendLocation($chatId, $latitude, $longitude, $keyboard = null, $options = [])` - Lokatsiya yuborish
+
+#### Callback va Actions
 - `answerCallbackQuery($callbackQueryId, $text = null, $showAlert = false)` - Callback javob berish
-- `sendChatAction($chatId, $action = 'typing')` - Chat action yuborish
+- `sendChatAction($chatId, $action = 'typing')` - Chat action yuborish (typing, upload_photo, record_voice, etc.)
+
+#### Webhook va Updates
+- `setWebhook($url, $options = [])` - Webhook o'rnatish
+- `deleteWebhook($dropPendingUpdates = false)` - Webhook o'chirish
+- `getWebhookInfo()` - Webhook ma'lumotlarini olish
+- `getUpdates($offset = null, $limit = null, $timeout = null, $allowedUpdates = null)` - Updates olish (polling)
+
+#### Fayl va Bot ma'lumotlari
 - `getFile($fileId)` - Fayl ma'lumotlarini olish
-- `setWebhook($url)` - Webhook o'rnatish
+- `getMe()` - Bot ma'lumotlarini olish
+
+#### Queue va Utility
 - `enqueueSendMessage($chatId, $text, $options = [])` - Queue orqali xabar yuborish
 - `escapeMarkdownV2($text)` - MarkdownV2 uchun matnni escape qilish
+- `escape($text)` - Alias for escapeMarkdownV2
 
 ### TelegramManager
 
 - `get($name = null)` - Bot component olish
+- `getBotNames()` - Barcha bot nomlarini olish
+- `has($name)` - Bot mavjudligini tekshirish
 
 ### Keyboard
 
