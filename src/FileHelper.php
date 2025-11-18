@@ -4,18 +4,37 @@ namespace shokirjonmk\telegram;
 
 use Yii;
 
+/**
+ * File Helper
+ * 
+ * Helper class for downloading files from Telegram
+ * 
+ * @package shokirjonmk\telegram
+ * @author ShokirjonMK
+ */
 class FileHelper
 {
     /**
-     * Download file by file_id, save to $savePath and return local path
-     * $component is a TelegramComponent (or manager->get(...))
+     * Download file from Telegram
+     * 
+     * Downloads file by file_id, saves to specified directory and returns local path.
+     * 
+     * @param TelegramComponent $component Telegram component instance
+     * @param string $fileId File ID from Telegram
+     * @param string $saveDir Directory to save file (Yii alias supported)
+     * @return string Local file path
+     * @throws TelegramException If download fails
+     * 
+     * @example
+     * $localPath = FileHelper::downloadFile($component, $fileId, '@runtime/tg_files');
      */
-    public static function downloadFile(TelegramComponent $component, $fileId, $saveDir = '@runtime/tg_files')
+    public static function downloadFile(TelegramComponent $component, string $fileId, string $saveDir = '@runtime/tg_files'): string
     {
         if (empty($fileId)) {
             throw new TelegramException('File ID is required');
         }
 
+        // Get file info from Telegram
         $info = $component->getFile($fileId);
 
         if (empty($info['ok']) || !$info['ok']) {
@@ -30,6 +49,7 @@ class FileHelper
         $filePath = $info['result']['file_path'];
         $url = rtrim($component->apiUrl, '/') . '/' . $component->token . '/file/' . $filePath;
 
+        // Prepare save directory
         $saveDir = Yii::getAlias($saveDir);
         if (!is_dir($saveDir)) {
             if (!mkdir($saveDir, 0755, true)) {
@@ -42,14 +62,15 @@ class FileHelper
         }
 
         $local = $saveDir . DIRECTORY_SEPARATOR . basename($filePath);
-
+        
+        // Download file
         $context = stream_context_create([
             'http' => [
                 'timeout' => 30,
                 'follow_location' => true,
             ]
         ]);
-
+        
         $content = @file_get_contents($url, false, $context);
         if ($content === false) {
             throw new TelegramException('Failed to download file from ' . $url);

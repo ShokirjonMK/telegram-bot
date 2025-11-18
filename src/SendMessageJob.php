@@ -7,15 +7,29 @@ use yii\base\BaseObject;
 use yii\queue\JobInterface;
 
 /**
- * Job for sending messages via Telegram in background
+ * Send Message Job
+ * 
+ * Queue job for sending Telegram messages in background
+ * 
+ * @package shokirjonmk\telegram
+ * @author ShokirjonMK
  */
 class SendMessageJob extends BaseObject implements JobInterface
 {
-    public $payload; // array with botToken, chatId, text, options
+    /** @var array Job payload with botToken, chatId, text, options */
+    public $payload;
 
-    public function execute($queue)
+    /**
+     * Execute job
+     * 
+     * @param \yii\queue\Queue $queue Queue instance
+     * @return void
+     * @throws TelegramException
+     */
+    public function execute($queue): void
     {
         try {
+            // Validate payload
             if (empty($this->payload['botToken'])) {
                 throw new TelegramException('Bot token is required');
             }
@@ -26,12 +40,13 @@ class SendMessageJob extends BaseObject implements JobInterface
                 throw new TelegramException('Message text is required');
             }
 
-            // we create a TelegramComponent for the given token (ad-hoc)
+            // Create Telegram component for the given token
             $component = new TelegramComponent([
                 'token' => $this->payload['botToken'],
                 'enableLogs' => true,
             ]);
 
+            // Send message
             $component->sendMessage(
                 $this->payload['chatId'],
                 $this->payload['text'],
@@ -43,7 +58,8 @@ class SendMessageJob extends BaseObject implements JobInterface
                 'err' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'payload' => $this->payload
-            ], 'telegram-error');
+            ], Constants::LOG_CATEGORY_ERROR);
+
             // Re-throw to let queue handle retries
             throw $e;
         }

@@ -1,8 +1,18 @@
 {
     "name": "shokirjonmk/telegram-bot",
-    "description": "Professional Telegram Bot Extension for Yii2 Framework",
+    "description": "Professional Telegram Bot Extension for Yii2 Framework with multi-bot support, queue integration, command routing, and rate limiting",
     "type": "yii2-extension",
-    "keywords": ["yii2", "telegram", "bot", "extension"],
+    "keywords": [
+        "yii2",
+        "telegram",
+        "bot",
+        "extension",
+        "telegram-bot",
+        "telegram-api",
+        "multi-bot",
+        "queue",
+        "rate-limiting"
+    ],
     "license": "MIT",
     "authors": [
         {
@@ -24,7 +34,17 @@
             "shokirjonmk\\telegram\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "shokirjonmk\\telegram\\tests\\": "tests/"
+        }
+    },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        }
+    }
 }
 
