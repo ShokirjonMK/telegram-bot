@@ -12,7 +12,12 @@
     ],
     "require": {
         "php": ">=7.4",
-        "yiisoft/yii2": ">=2.0.0"
+        "yiisoft/yii2": ">=2.0.0",
+        "yiisoft/yii2-httpclient": "*"
+    },
+    "suggest": {
+        "yiisoft/yii2-queue": "For background message sending",
+        "yiisoft/yii2-redis": "For rate limiting and queue backend"
     },
     "autoload": {
         "psr-4": {
